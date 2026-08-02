@@ -3,3 +3,62 @@
 SPECIFICATION.md
 ARCHITECTURE.md
 ROADMAP.md
+
+# =========================
+# .NET
+# =========================
+bin/
+obj/
+out/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ll]og/
+[Ll]ogs/
+*.pdb
+*.cache
+*.dll.config
+*.exe.config
+TestResults/
+[Cc]overage/
+*.coverage
+*.coveragexml
+*.trx
+
+# =========================
+# IDE / Editor
+# =========================
+.vs/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln.docstates
+.idea/
+*.DotSettings.user
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+*.env.local
+appsettings.Development.json
+appsettings.*.local.json
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db

@@ -12,6 +12,14 @@ public class PropertyConfiguration : IEntityTypeConfiguration<Property>
 
         builder.HasKey(p => p.Id);
 
+        // The app always generates the Id client-side (Guid.NewGuid() in the constructor), so EF
+        // Core must never assume the database generates it. Without this, an entity discovered via
+        // navigation-fixup (rather than an explicit Add) with a non-default Guid key can be
+        // misclassified as "already exists" (Modified) instead of "new" (Added) — see
+        // ProposalStatusHistoryConfiguration for where this actually surfaced.
+        builder.Property(p => p.Id)
+            .ValueGeneratedNever();
+
         builder.Property(p => p.Name)
             .IsRequired()
             .HasMaxLength(200);

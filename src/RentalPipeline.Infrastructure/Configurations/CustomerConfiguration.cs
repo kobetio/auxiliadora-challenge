@@ -12,6 +12,10 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
 
         builder.HasKey(c => c.Id);
 
+        // See PropertyConfiguration for why this is required for client-generated Guid keys.
+        builder.Property(c => c.Id)
+            .ValueGeneratedNever();
+
         builder.Property(c => c.Name)
             .IsRequired()
             .HasMaxLength(200);

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
@@ -17,7 +18,7 @@ public class CustomerServiceTests
 
     public CustomerServiceTests()
     {
-        _sut = new CustomerService(_customerRepository, _rentalProposalRepository, _unitOfWork);
+        _sut = new CustomerService(_customerRepository, _rentalProposalRepository, _unitOfWork, NullLogger<CustomerService>.Instance);
     }
 
     [Fact]

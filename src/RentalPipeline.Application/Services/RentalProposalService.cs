@@ -1,4 +1,5 @@
 using FluentResults;
+using Microsoft.Extensions.Logging;
 using RentalPipeline.Application.Contracts;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
@@ -19,6 +20,7 @@ public class RentalProposalService : IRentalProposalService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ProposalStateMachine _stateMachine;
     private readonly IEventPublisher _eventPublisher;
+    private readonly ILogger<RentalProposalService> _logger;
 
     public RentalProposalService(
         IRentalProposalRepository rentalProposalRepository,
@@ -26,7 +28,8 @@ public class RentalProposalService : IRentalProposalService
         ICustomerRepository customerRepository,
         IUnitOfWork unitOfWork,
         ProposalStateMachine stateMachine,
-        IEventPublisher eventPublisher)
+        IEventPublisher eventPublisher,
+        ILogger<RentalProposalService> logger)
     {
         _rentalProposalRepository = rentalProposalRepository;
         _propertyRepository = propertyRepository;
@@ -34,6 +37,7 @@ public class RentalProposalService : IRentalProposalService
         _unitOfWork = unitOfWork;
         _stateMachine = stateMachine;
         _eventPublisher = eventPublisher;
+        _logger = logger;
     }
 
     public async Task<Result<RentalProposalDto>> CreateAsync(CreateProposalRequest request, CancellationToken cancellationToken = default)
@@ -53,6 +57,11 @@ public class RentalProposalService : IRentalProposalService
         // Rule 2: a proposal can only be created against an Available property.
         if (property.Status != PropertyStatus.Available)
         {
+            _logger.LogWarning(
+                "Property unavailable: property {PropertyId} has status {PropertyStatus}, rejecting new proposal.",
+                property.Id,
+                property.Status);
+
             return Result.Fail<RentalProposalDto>(new ConflictError(
                 $"Property '{property.Id}' is not available for a new proposal (current status: '{property.Status}')."));
         }
@@ -68,6 +77,12 @@ public class RentalProposalService : IRentalProposalService
 
         await _rentalProposalRepository.AddAsync(proposal, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Proposal created: {ProposalId} for property {PropertyId} and customer {CustomerId}.",
+            proposal.Id,
+            proposal.PropertyId,
+            proposal.CustomerId);
 
         return Result.Ok(proposal.ToDto());
     }
@@ -85,6 +100,12 @@ public class RentalProposalService : IRentalProposalService
         // instead of the DomainException safety net inside RentalProposal.ChangeStatus.
         if (!_stateMachine.CanTransition(proposal.Status, request.NewStatus))
         {
+            _logger.LogWarning(
+                "Invalid transition: proposal {ProposalId} cannot go from {CurrentStatus} to {TargetStatus}.",
+                proposal.Id,
+                proposal.Status,
+                request.NewStatus);
+
             return Result.Fail<RentalProposalDto>(new BusinessRuleViolationError(
                 $"Cannot transition proposal from '{proposal.Status}' to '{request.NewStatus}'."));
         }
@@ -97,6 +118,7 @@ public class RentalProposalService : IRentalProposalService
                 $"Property '{proposal.PropertyId}' referenced by proposal '{proposal.Id}' was not found.");
         }
 
+        var previousStatus = proposal.Status;
         proposal.ChangeStatus(request.NewStatus, _stateMachine); // Rule 8: records history internally.
 
         switch (request.NewStatus)
@@ -112,11 +134,19 @@ public class RentalProposalService : IRentalProposalService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        _logger.LogInformation(
+            "Status changed: proposal {ProposalId} went from {PreviousStatus} to {NewStatus}.",
+            proposal.Id,
+            previousStatus,
+            proposal.Status);
+
         if (request.NewStatus == ProposalStatus.Active)
         {
             await _eventPublisher.PublishAsync(
                 new ContractActivatedEvent(proposal.Id, proposal.PropertyId, DateTime.UtcNow),
                 cancellationToken);
+
+            _logger.LogInformation("Event published: ContractActivated for proposal {ProposalId}.", proposal.Id);
         }
 
         return Result.Ok(proposal.ToDto());

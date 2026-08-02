@@ -11,6 +11,9 @@ using RentalPipeline.Infrastructure.Repositories;
 
 namespace RentalPipeline.Api.Extensions;
 
+/// <summary>
+/// Dependency Injection registration entry points, grouped by concern, called from <c>Program.cs</c>.
+/// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>

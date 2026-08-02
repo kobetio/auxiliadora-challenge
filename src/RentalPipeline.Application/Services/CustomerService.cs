@@ -1,4 +1,5 @@
 using FluentResults;
+using Microsoft.Extensions.Logging;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
 using RentalPipeline.Application.Interfaces;
@@ -13,15 +14,18 @@ public class CustomerService : ICustomerService
     private readonly ICustomerRepository _customerRepository;
     private readonly IRentalProposalRepository _rentalProposalRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<CustomerService> _logger;
 
     public CustomerService(
         ICustomerRepository customerRepository,
         IRentalProposalRepository rentalProposalRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ILogger<CustomerService> logger)
     {
         _customerRepository = customerRepository;
         _rentalProposalRepository = rentalProposalRepository;
         _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     public async Task<Result<CustomerDto>> CreateAsync(CreateCustomerRequest request, CancellationToken cancellationToken = default)
@@ -30,6 +34,8 @@ public class CustomerService : ICustomerService
 
         await _customerRepository.AddAsync(customer, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Customer created: {CustomerId}", customer.Id);
 
         return Result.Ok(customer.ToDto());
     }

@@ -269,6 +269,55 @@ Redis is documented as a possible future improvement for high-scale distributed 
 
 ---
 
+# Result<T> to ProblemDetails Mapping
+
+Controllers never build HTTP responses by hand or contain try/catch blocks. A single set of `ControllerBase` extension methods (`ResultExtensions`) translates every `Result`/`Result<T>` outcome into an HTTP response:
+
+- Success → `200 OK` / `201 Created` (with `Location` header) / `204 No Content`, depending on the extension method the controller calls.
+- Failure → an RFC 7807 ProblemDetails response, built via ASP.NET Core's own `ControllerBase.Problem(...)` helper (which already fills in the `type` field with the correct RFC 9110 status-section link).
+
+The concrete Application-layer error type drives the HTTP status and title:
+
+- `NotFoundError` → `404`, title `"Not Found"`
+- `ConflictError` → `409`, title `"Conflict"`
+- `BusinessRuleViolationError` → `400`, title `"Business Rule Violation"` (matching Architecture.md's own ProblemDetails example title verbatim)
+- Any other/unknown error → `400`, title `"Bad Request"`, as a safe fallback
+
+This keeps the error-to-status mapping in exactly one place, instead of scattering `NotFound()`/`Conflict()`/`BadRequest()` calls across every controller action.
+
+---
+
+# Why a Custom Validation Filter Instead of FluentValidation.AspNetCore
+
+Architecture.md asks for the FluentValidation pipeline to auto-validate incoming requests and return `400` automatically, without controllers or DTOs calling validators explicitly.
+
+The historical way to achieve this was the `FluentValidation.AspNetCore` package, but its author deprecated and stopped maintaining it in 2021, explicitly recommending that consumers implement the equivalent behavior themselves instead of depending on it.
+
+This project follows that recommendation: `Api/Filters/ValidationFilter` is a plain `IAsyncActionFilter`, registered once globally (`AddControllers(o => o.Filters.Add<ValidationFilter>())`), that resolves an `IValidator<T>` for each action argument (if one is registered in DI), runs it, and — on failure — short-circuits the pipeline with a `400` built via the framework's own `ProblemDetailsFactory.CreateValidationProblemDetails`, giving the exact same shape ASP.NET Core's built-in Data Annotations validation would produce. No extra, unmaintained package required.
+
+---
+
+# Client-Generated Guid Keys Require `ValueGeneratedNever()`
+
+All entities generate their own primary key client-side, in the constructor (`Id = Guid.NewGuid()`), rather than relying on the database or EF Core to generate it. During manual end-to-end testing of Phase 5 (against a real PostgreSQL instance), this surfaced a subtle EF Core change-tracking bug:
+
+Every `RentalProposal` status transition appends a new `ProposalStatusHistory` entry to the aggregate's `_statusHistory` collection. For the *first* entry — created inside the `RentalProposal` constructor, before the aggregate is ever added to the `DbSet` — this worked correctly, because EF Core cascades the `Added` state to the entire object graph when an aggregate root is explicitly added via the repository. But for every *subsequent* entry — appended after the proposal was already loaded and tracked (e.g. inside `UpdateStatusAsync`) — EF Core's change tracker discovers the new `ProposalStatusHistory` object purely through navigation/graph fixup, not through an explicit `Add()` call. In that situation, EF Core's default heuristic for deciding `Added` vs. `Modified` is "is the primary key equal to the CLR default value (`Guid.Empty`)?" — and since our Guids are always already populated by the constructor, every one of these entries was misclassified as an *existing* row being modified, producing an `UPDATE` statement against a row that didn't exist yet, and failing with `DbUpdateConcurrencyException: expected to affect 1 row(s), but actually affected 0`.
+
+The fix: every entity configuration explicitly declares `.Property(x => x.Id).ValueGeneratedNever()`. This tells EF Core the application always owns key generation, removing the "default value" ambiguity — any untracked entity discovered in the graph, regardless of its key value, is now correctly treated as `Added`. Confirmed via `dotnet ef migrations add` that this is a pure EF Core metadata/tracking change with no actual SQL/schema impact (an empty migration was generated and then removed).
+
+This is a good illustration of why "manually exercise every endpoint" is a mandatory Phase 5 step rather than an optional nice-to-have: this bug was invisible to unit tests (which mock the repositories) and only reproducible against a real database with a real change tracker.
+
+---
+
+# Locale-Independent API Behavior (Validation Messages, Enum Serialization)
+
+Two small but important polish decisions, both surfaced during manual testing on a pt-BR development machine:
+
+- **FluentValidation messages**: by default, FluentValidation localizes its built-in messages based on the running thread's culture. On a pt-BR OS, this silently produced Portuguese validation error messages in API responses — inconsistent with the rest of the (English) API and dependent on the deployment environment's locale, which is not acceptable for a production API. Fixed with `ValidatorOptions.Global.LanguageManager.Enabled = false`, which forces the default English messages everywhere, regardless of the host's OS/culture settings.
+- **Enum serialization**: enums were serialized as raw integers by default (e.g. `"status": 0"`), which is technically correct but poor API ergonomics and Swagger documentation. A global `JsonStringEnumConverter` (registered via `AddJsonOptions`) makes both JSON payloads and the generated Swagger schema use the enum's name (e.g. `"status": "Available"`) instead.
+
+---
+
 # Future Improvements
 
 The current architecture was designed to support future evolution with minimal changes.

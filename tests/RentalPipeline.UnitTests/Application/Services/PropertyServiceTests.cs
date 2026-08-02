@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
@@ -17,7 +18,7 @@ public class PropertyServiceTests
 
     public PropertyServiceTests()
     {
-        _sut = new PropertyService(_propertyRepository, _rentalProposalRepository, _unitOfWork);
+        _sut = new PropertyService(_propertyRepository, _rentalProposalRepository, _unitOfWork, NullLogger<PropertyService>.Instance);
     }
 
     [Fact]

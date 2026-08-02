@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using RentalPipeline.Application.Contracts;
 using RentalPipeline.Application.DTOs;
@@ -29,7 +30,8 @@ public class RentalProposalServiceTests
             _customerRepository,
             _unitOfWork,
             _stateMachine,
-            _eventPublisher);
+            _eventPublisher,
+            NullLogger<RentalProposalService>.Instance);
     }
 
     private static Property AvailableProperty() => new("Loft Centro", "Rua A, 123");

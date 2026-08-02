@@ -12,6 +12,10 @@ public class RentalProposalConfiguration : IEntityTypeConfiguration<RentalPropos
 
         builder.HasKey(p => p.Id);
 
+        // See PropertyConfiguration for why this is required for client-generated Guid keys.
+        builder.Property(p => p.Id)
+            .ValueGeneratedNever();
+
         builder.Property(p => p.PropertyId)
             .IsRequired();
 

@@ -12,6 +12,14 @@ public class ProposalStatusHistoryConfiguration : IEntityTypeConfiguration<Propo
 
         builder.HasKey(h => h.Id);
 
+        // Critical for this entity specifically: history rows are added to an already-tracked
+        // RentalProposal's StatusHistory collection (not via an explicit repository Add()), so
+        // without this, EF Core's change tracker misclassifies each new row as an update against a
+        // non-existent row (DbUpdateConcurrencyException: "expected to affect 1 row(s), but
+        // actually affected 0"). See PropertyConfiguration for the full explanation.
+        builder.Property(h => h.Id)
+            .ValueGeneratedNever();
+
         builder.Property(h => h.ProposalId)
             .IsRequired();
 

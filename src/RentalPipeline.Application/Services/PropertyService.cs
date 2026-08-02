@@ -1,4 +1,5 @@
 using FluentResults;
+using Microsoft.Extensions.Logging;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
 using RentalPipeline.Application.Interfaces;
@@ -13,15 +14,18 @@ public class PropertyService : IPropertyService
     private readonly IPropertyRepository _propertyRepository;
     private readonly IRentalProposalRepository _rentalProposalRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<PropertyService> _logger;
 
     public PropertyService(
         IPropertyRepository propertyRepository,
         IRentalProposalRepository rentalProposalRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ILogger<PropertyService> logger)
     {
         _propertyRepository = propertyRepository;
         _rentalProposalRepository = rentalProposalRepository;
         _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     public async Task<Result<PropertyDto>> CreateAsync(CreatePropertyRequest request, CancellationToken cancellationToken = default)
@@ -31,6 +35,8 @@ public class PropertyService : IPropertyService
 
         await _propertyRepository.AddAsync(property, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Property created: {PropertyId}", property.Id);
 
         return Result.Ok(property.ToDto());
     }

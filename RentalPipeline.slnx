@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RentalPipeline.Api/RentalPipeline.Api.csproj" />
+    <Project Path="src/RentalPipeline.Application/RentalPipeline.Application.csproj" />
+    <Project Path="src/RentalPipeline.Domain/RentalPipeline.Domain.csproj" />
+    <Project Path="src/RentalPipeline.Infrastructure/RentalPipeline.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RentalPipeline.IntegrationTests/RentalPipeline.IntegrationTests.csproj" />
+    <Project Path="tests/RentalPipeline.UnitTests/RentalPipeline.UnitTests.csproj" />
+  </Folder>
+</Solution>

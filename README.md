@@ -1,5 +1,11 @@
 # Rental Pipeline API
 
+🌍 Language
+- 🇺🇸 English (current)
+- 🇧🇷 [Português](README.pt-BR.md)
+
+---
+
 A REST API built with **.NET 10** to manage the complete lifecycle of residential rental proposals.
 
 This project was developed as a technical challenge with the objective of demonstrating software engineering best practices, domain modeling, clean architecture, data consistency, and automated testing.

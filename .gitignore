@@ -1,0 +1,5 @@
+# Internal planning/spec documents - not meant to be published in the public repo.
+# Only README.md and ARCHITECTURE_DECISIONS.md should remain publicly visible.
+SPECIFICATION.md
+ARCHITECTURE.md
+ROADMAP.md

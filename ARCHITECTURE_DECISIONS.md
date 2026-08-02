@@ -261,13 +261,13 @@ Consistency was intentionally prioritized over performance.
 
 ---
 
-# Concurrency Implementation Details (Phase 6)
+# Concurrency Implementation Details
 
 The strategy above is implemented as two independent, complementary layers — either one alone would close the race in practice, but Architecture.md explicitly asks for both, and each protects against a slightly different anomaly:
 
 **Layer 1 — Serializable transaction around the critical section.** `IUnitOfWork.ExecuteInSerializableTransactionAsync<TResult>` wraps a delegate in a `Database.BeginTransactionAsync(IsolationLevel.Serializable)` transaction (committed only if the delegate completes without throwing; any exception rolls it back via disposal). `RentalProposalService.CreateAsync` wraps exactly the read-check-reserve-create sequence from Architecture.md's "Transaction Flow" diagram (reading the Property, checking Rule 2, reserving it, and creating the Proposal) in this transaction — not the whole request, since the Customer existence check plays no part in the race. Under PostgreSQL's Serializable Snapshot Isolation, if two transactions' reads genuinely overlap before either commits, PostgreSQL detects the anomaly at commit time and aborts one side with a `40001 serialization_failure`.
 
-**Layer 2 — Optimistic concurrency (`xmin`/`RowVersion`, added in Phase 4).** Even without any overlap in the transactions' read phases, both `Property` and `RentalProposal` carry a `RowVersion` mapped to PostgreSQL's `xmin`. Every `UPDATE` EF Core generates includes `WHERE Id = @id AND xmin = @originalXmin`; if another transaction already committed a change to that row, the second `UPDATE` affects zero rows and EF Core throws `DbUpdateConcurrencyException`.
+**Layer 2 — Optimistic concurrency (`xmin`/`RowVersion`).** Even without any overlap in the transactions' read phases, both `Property` and `RentalProposal` carry a `RowVersion` mapped to PostgreSQL's `xmin`. Every `UPDATE` EF Core generates includes `WHERE Id = @id AND xmin = @originalXmin`; if another transaction already committed a change to that row, the second `UPDATE` affects zero rows and EF Core throws `DbUpdateConcurrencyException`.
 
 **Both exceptions are mapped to `409 Conflict` in one place**: `ExceptionHandlingMiddleware` specifically catches `DbUpdateConcurrencyException` and `DbUpdateException` wrapping a `PostgresException` with `SqlState == PostgresErrorCodes.SerializationFailure`, logs each as a `Warning` (not `Error` — these are expected, retryable outcomes of a legitimate race, not bugs), and returns `409` for both. Everything else remains an unexpected `500`.
 
@@ -332,13 +332,13 @@ This project follows that recommendation: `Api/Filters/ValidationFilter` is a pl
 
 # Client-Generated Guid Keys Require `ValueGeneratedNever()`
 
-All entities generate their own primary key client-side, in the constructor (`Id = Guid.NewGuid()`), rather than relying on the database or EF Core to generate it. During manual end-to-end testing of Phase 5 (against a real PostgreSQL instance), this surfaced a subtle EF Core change-tracking bug:
+All entities generate their own primary key client-side, in the constructor (`Id = Guid.NewGuid()`), rather than relying on the database or EF Core to generate it. During manual end-to-end testing against a real PostgreSQL instance, this surfaced a subtle EF Core change-tracking bug:
 
 Every `RentalProposal` status transition appends a new `ProposalStatusHistory` entry to the aggregate's `_statusHistory` collection. For the *first* entry — created inside the `RentalProposal` constructor, before the aggregate is ever added to the `DbSet` — this worked correctly, because EF Core cascades the `Added` state to the entire object graph when an aggregate root is explicitly added via the repository. But for every *subsequent* entry — appended after the proposal was already loaded and tracked (e.g. inside `UpdateStatusAsync`) — EF Core's change tracker discovers the new `ProposalStatusHistory` object purely through navigation/graph fixup, not through an explicit `Add()` call. In that situation, EF Core's default heuristic for deciding `Added` vs. `Modified` is "is the primary key equal to the CLR default value (`Guid.Empty`)?" — and since our Guids are always already populated by the constructor, every one of these entries was misclassified as an *existing* row being modified, producing an `UPDATE` statement against a row that didn't exist yet, and failing with `DbUpdateConcurrencyException: expected to affect 1 row(s), but actually affected 0`.
 
 The fix: every entity configuration explicitly declares `.Property(x => x.Id).ValueGeneratedNever()`. This tells EF Core the application always owns key generation, removing the "default value" ambiguity — any untracked entity discovered in the graph, regardless of its key value, is now correctly treated as `Added`. Confirmed via `dotnet ef migrations add` that this is a pure EF Core metadata/tracking change with no actual SQL/schema impact (an empty migration was generated and then removed).
 
-This is a good illustration of why "manually exercise every endpoint" is a mandatory Phase 5 step rather than an optional nice-to-have: this bug was invisible to unit tests (which mock the repositories) and only reproducible against a real database with a real change tracker.
+This is a good illustration of why "manually exercise every endpoint" is a mandatory step rather than an optional nice-to-have: this bug was invisible to unit tests (which mock the repositories) and only reproducible against a real database with a real change tracker.
 
 ---
 
@@ -355,7 +355,7 @@ Two small but important polish decisions, both surfaced during manual testing on
 
 `docker compose up` (and any other deployment of the API) must bring up a fully working, migrated database with zero manual steps — no `dotnet-ef` tool, no separate `dotnet ef database update` command required on the host or in the container.
 
-`Program.cs` calls `dbContext.Database.MigrateAsync()` once at startup, right after the host is built and before the HTTP pipeline is configured, so the API never starts accepting requests against a schema that isn't up to date. This runs identically whether the API is started via `dotnet run` on the host or via the Docker image, and it is exactly what `RentalPipelineApiFactory` (the integration test host) already did independently since Phase 6 — the two are now consistent.
+`Program.cs` calls `dbContext.Database.MigrateAsync()` once at startup, right after the host is built and before the HTTP pipeline is configured, so the API never starts accepting requests against a schema that isn't up to date. This runs identically whether the API is started via `dotnet run` on the host or via the Docker image, and it is exactly what `RentalPipelineApiFactory` (the integration test host) already did independently — the two are now consistent.
 
 Trade-off acknowledged: for a higher-scale, multi-instance deployment, applying migrations from the application's own startup path is generally discouraged (multiple instances could race to apply the same migration, and a bad migration would block every instance from starting rather than being validated as a separate, controlled release step). For this project's single-instance deployment model, the simplicity and zero-manual-setup benefit outweighs that risk; a dedicated migration step (a one-off `dotnet ef database update` job/container, run before the API instances start) is the documented alternative for a production-grade, multi-instance evolution of this project.
 

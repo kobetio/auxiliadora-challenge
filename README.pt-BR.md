@@ -6,9 +6,9 @@
 
 ---
 
-Uma API REST construída com **.NET 10** para gerenciar o ciclo de vida completo de propostas de locação residencial.
+API REST construída com **.NET 10** para gerenciar o ciclo de vida completo da Esteira de Contratos de Aluguel.
 
-Este projeto foi desenvolvido como um desafio técnico com o objetivo de demonstrar boas práticas de engenharia de software, modelagem de domínio, arquitetura limpa, consistência de dados e testes automatizados.
+Este projeto foi desenvolvido como um desafio técnico com o objetivo de demonstrar boas práticas de engenharia de software, modelagem de domínio, clean architecture, consistência de dados e testes automatizados.
 
 ---
 
@@ -22,7 +22,7 @@ Este projeto foi desenvolvido como um desafio técnico com o objetivo de demonst
 - Simulação de Publicação de Eventos
 - Proteção contra Concorrência (transações Serializable + Concorrência Otimista)
 - Documentação Swagger / OpenAPI
-- Suporte a Docker (aplica as migrações do banco de dados automaticamente na inicialização)
+- Suporte a Docker (aplica as migrations do banco de dados automaticamente na inicialização)
 - Testes Unitários
 - Testes de Integração (PostgreSQL real via Testcontainers)
 
@@ -113,7 +113,7 @@ Suba apenas o PostgreSQL (exposto na máquina host na porta `5433`):
 docker compose up -d postgres
 ```
 
-Execute a API diretamente com o .NET SDK. O `appsettings.json` já está configurado para conectar em `localhost:5433`, e as migrações são aplicadas automaticamente na inicialização, assim como na Opção A:
+Execute a API diretamente com o .NET SDK. O `appsettings.json` já está configurado para conectar em `localhost:5433`, e as migrations são aplicadas automaticamente na inicialização, assim como na Opção A:
 
 ```bash
 dotnet run --project src/RentalPipeline.Api
@@ -173,11 +173,11 @@ As regras de negócio mais importantes são:
 
 # Arquitetura
 
-Este projeto segue **Clean Architecture** com uma abordagem leve de **DDD (DDD Lite)**.
+Este projeto segue **Clean Architecture** com abordagem de **DDD (DDD Lite)**.
 
 Informações adicionais sobre as decisões arquiteturais podem ser encontradas em:
 
-- **ARCHITECTURE_DECISIONS.md**
+- **[ARCHITECTURE_DECISIONS.pt-BR.md](ARCHITECTURE_DECISIONS.pt-BR.md)**
 
 ---
 
@@ -193,4 +193,4 @@ Algumas funcionalidades foram intencionalmente deixadas fora do escopo deste des
 - OpenTelemetry
 - Kubernetes
 
-Veja **ARCHITECTURE_DECISIONS.md** para mais detalhes.
+Veja **[ARCHITECTURE_DECISIONS.pt-BR.md](ARCHITECTURE_DECISIONS.pt-BR.md)** para mais detalhes.

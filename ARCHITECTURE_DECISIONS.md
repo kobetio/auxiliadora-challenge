@@ -1,5 +1,11 @@
 # Architecture Decisions
 
+🌍 Language
+- 🇺🇸 English (current)
+- 🇧🇷 [Português](ARCHITECTURE_DECISIONS.pt-BR.md)
+
+---
+
 This document describes the main architectural and technical decisions made during the implementation of the Rental Pipeline API.
 
 ---

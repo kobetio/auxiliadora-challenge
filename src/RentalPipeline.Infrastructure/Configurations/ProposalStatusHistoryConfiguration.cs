@@ -15,8 +15,9 @@ public class ProposalStatusHistoryConfiguration : IEntityTypeConfiguration<Propo
         builder.Property(h => h.ProposalId)
             .IsRequired();
 
+        // Nullable: null represents the proposal's initial creation history entry (Rule 8), which
+        // has no real "previous" status to record.
         builder.Property(h => h.PreviousStatus)
-            .IsRequired()
             .HasConversion<string>()
             .HasMaxLength(50);
 

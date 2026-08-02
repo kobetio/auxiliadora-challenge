@@ -57,6 +57,16 @@ This approach keeps the solution simple while still providing a rich domain mode
 
 ---
 
+# Full CRUD for Property and Customer
+
+The original specification only documents Create and Get operations for Property and Customer.
+
+Full Update and Delete operations were added for both entities on explicit request, to provide a complete and consistent CRUD experience across the API.
+
+Delete operations include a safe-delete guard: a Property or Customer with at least one associated rental proposal cannot be deleted. This prevents orphaned foreign keys and preserves the integrity of the proposal pipeline's history.
+
+---
+
 # Why PostgreSQL?
 
 PostgreSQL was selected because it offers:
@@ -82,6 +92,22 @@ Entity Framework Core was selected because it provides:
 - Code First Migrations
 - Optimistic Concurrency support
 - Excellent .NET integration
+
+---
+
+# Optimistic Concurrency: RowVersion Mapped to PostgreSQL xmin
+
+Concurrent updates to the same Property or RentalProposal must be detected and rejected safely, instead of silently overwriting each other.
+
+Rather than maintaining a separate, manually-managed concurrency column, the optimistic concurrency token is mapped directly to PostgreSQL's native `xmin` system column, using the Npgsql EF Core provider's `IsRowVersion()` configuration.
+
+This requires the concurrency token to be typed as `uint` (not `byte[]`, which is the more common convention for SQL Server) on the Domain entities, since that is how the Npgsql provider represents `xmin`.
+
+Benefits:
+
+- No extra column, trigger, or manual increment logic needed
+- Native database support, updated automatically by PostgreSQL on every row change
+- Conflicts surface as a `DbUpdateConcurrencyException`, mapped to `409 Conflict`
 
 ---
 
@@ -114,6 +140,34 @@ Exceptions are reserved for unexpected failures.
 
 ---
 
+# Domain Exceptions: One Generic Type
+
+The Domain layer defines a single `DomainException` type instead of a hierarchy of specific exception subclasses (e.g. one exception per invalid state).
+
+Reasoning:
+
+- These exceptions only exist as defense-in-depth safety nets, for states that should never occur if the Application layer performed its expected validation beforehand
+- None of them are meant to be caught or handled differently from one another — they all represent the same category of "this should never happen"
+- A hierarchy of subclasses would add ceremony without any real behavioral benefit
+
+Expected business failures (an invalid proposal status transition, a property that is not available, etc.) are never represented as exceptions — they always flow through `Result<T>` instead.
+
+---
+
+# Why Manual Mapping Instead of AutoMapper?
+
+Mapping between Domain entities and DTOs is done through small, explicit extension methods (e.g. `ToDto()`) instead of a mapping library like AutoMapper.
+
+Reasons:
+
+- The mappings involved are simple, with no complex flattening, nested collections, or conditional logic that would justify a mapping library
+- Explicit mapping code is easier to read, debug and refactor safely, and gives full compiler-checked safety
+- AutoMapper moved to a paid licensing model for commercial use, which is an unnecessary dependency and cost for this project's straightforward mapping needs
+
+This keeps the Application layer free of a reflection-based library while remaining just as maintainable.
+
+---
+
 # Why a Dedicated Proposal State Machine?
 
 Proposal status transitions are centralized inside a dedicated ProposalStateMachine.
@@ -127,6 +181,31 @@ Benefits:
 - Easier testing
 - Easy to extend
 - Eliminates duplicated business rules
+
+---
+
+# Cross-Aggregate Coordination
+
+`RentalProposal` and `Property` are separate Aggregate Roots. A single aggregate must never directly mutate another aggregate's state.
+
+Because of this, side effects that span both aggregates — such as reserving or releasing a Property when a proposal's status changes — are coordinated by the Application Service layer, not by the `RentalProposal` entity itself.
+
+Each aggregate stays responsible only for enforcing its own invariants:
+
+- `RentalProposal` owns its own status transitions and status history
+- `Property` owns its own status guard clauses
+
+The Application Service loads both aggregates, applies the proposal's transition, applies the resulting property transition, and persists both changes through a single Unit of Work.
+
+---
+
+# Proposal History Includes Its Own Creation
+
+The full lifecycle of a rental proposal must be visible through its history — including the moment it was created, not only its later status transitions.
+
+For this reason, the "previous status" recorded in history is nullable: the entry created together with the proposal has no real previous status, and `null` communicates that more honestly than reusing the initial status as a fake "previous" value.
+
+As a result, every rental proposal always has at least one history entry from the moment it exists, and its history endpoint always reflects the proposal's complete story, from creation through to its current state.
 
 ---
 

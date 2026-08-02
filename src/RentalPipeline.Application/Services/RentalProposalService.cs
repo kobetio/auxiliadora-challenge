@@ -1,10 +1,13 @@
 using FluentResults;
+using RentalPipeline.Application.Contracts;
 using RentalPipeline.Application.DTOs;
 using RentalPipeline.Application.Errors;
 using RentalPipeline.Application.Interfaces;
 using RentalPipeline.Application.Mappings;
 using RentalPipeline.Domain.Entities;
+using RentalPipeline.Domain.Enums;
 using RentalPipeline.Domain.Interfaces;
+using RentalPipeline.Domain.StateMachine;
 
 namespace RentalPipeline.Application.Services;
 
@@ -14,17 +17,23 @@ public class RentalProposalService : IRentalProposalService
     private readonly IPropertyRepository _propertyRepository;
     private readonly ICustomerRepository _customerRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ProposalStateMachine _stateMachine;
+    private readonly IEventPublisher _eventPublisher;
 
     public RentalProposalService(
         IRentalProposalRepository rentalProposalRepository,
         IPropertyRepository propertyRepository,
         ICustomerRepository customerRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ProposalStateMachine stateMachine,
+        IEventPublisher eventPublisher)
     {
         _rentalProposalRepository = rentalProposalRepository;
         _propertyRepository = propertyRepository;
         _customerRepository = customerRepository;
         _unitOfWork = unitOfWork;
+        _stateMachine = stateMachine;
+        _eventPublisher = eventPublisher;
     }
 
     public async Task<Result<RentalProposalDto>> CreateAsync(CreateProposalRequest request, CancellationToken cancellationToken = default)
@@ -41,13 +50,74 @@ public class RentalProposalService : IRentalProposalService
             return Result.Fail<RentalProposalDto>(new NotFoundError($"Customer '{request.CustomerId}' was not found."));
         }
 
-        // NOTE: Rule 2 (property must be Available) and Rule 3 (Property -> InNegotiation) are
-        // wired in Phase 4, inside the Serializable transaction described in Architecture.md
-        // Section 9 (implemented in Phase 6). This phase only covers the CRUD-ish creation flow.
+        // Rule 2: a proposal can only be created against an Available property.
+        if (property.Status != PropertyStatus.Available)
+        {
+            return Result.Fail<RentalProposalDto>(new ConflictError(
+                $"Property '{property.Id}' is not available for a new proposal (current status: '{property.Status}')."));
+        }
+
+        // Rule 3: creating the proposal reserves the property (Available -> InNegotiation) and the
+        // proposal itself starts as New. Both changes are persisted by the same SaveChangesAsync
+        // call below, so EF Core commits them atomically in a single implicit transaction.
+        // NOTE: wrapping this critical section in an explicit Serializable-isolation transaction to
+        // fully close the concurrent-creation race (Architecture.md Section 9) is Phase 6 work.
+        property.MarkAsInNegotiation();
+
         var proposal = new RentalProposal(property.Id, customer.Id);
 
         await _rentalProposalRepository.AddAsync(proposal, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result.Ok(proposal.ToDto());
+    }
+
+    public async Task<Result<RentalProposalDto>> UpdateStatusAsync(Guid id, UpdateProposalStatusRequest request, CancellationToken cancellationToken = default)
+    {
+        var proposal = await _rentalProposalRepository.GetByIdAsync(id, cancellationToken);
+        if (proposal is null)
+        {
+            return Result.Fail<RentalProposalDto>(new NotFoundError($"Rental proposal '{id}' was not found."));
+        }
+
+        // Rule 4/5: validate the transition before mutating anything, so an invalid request
+        // (e.g. skipping states, or leaving a terminal state) surfaces as a 409/400 Result failure
+        // instead of the DomainException safety net inside RentalProposal.ChangeStatus.
+        if (!_stateMachine.CanTransition(proposal.Status, request.NewStatus))
+        {
+            return Result.Fail<RentalProposalDto>(new BusinessRuleViolationError(
+                $"Cannot transition proposal from '{proposal.Status}' to '{request.NewStatus}'."));
+        }
+
+        var property = await _propertyRepository.GetByIdAsync(proposal.PropertyId, cancellationToken);
+        if (property is null)
+        {
+            // Referential integrity (FK, Restrict delete) guarantees this never happens in practice.
+            throw new Domain.Exceptions.DomainException(
+                $"Property '{proposal.PropertyId}' referenced by proposal '{proposal.Id}' was not found.");
+        }
+
+        proposal.ChangeStatus(request.NewStatus, _stateMachine); // Rule 8: records history internally.
+
+        switch (request.NewStatus)
+        {
+            case ProposalStatus.Active:
+                property.MarkAsRented(); // Rule 6.
+                break;
+            case ProposalStatus.Rejected:
+            case ProposalStatus.Cancelled:
+                property.MarkAsAvailable(); // Rule 7.
+                break;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        if (request.NewStatus == ProposalStatus.Active)
+        {
+            await _eventPublisher.PublishAsync(
+                new ContractActivatedEvent(proposal.Id, proposal.PropertyId, DateTime.UtcNow),
+                cancellationToken);
+        }
 
         return Result.Ok(proposal.ToDto());
     }

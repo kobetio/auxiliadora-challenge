@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RentalPipeline.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using RentalPipeline.Infrastructure.Persistence;
 namespace RentalPipeline.Infrastructure.Migrations
 {
     [DbContext(typeof(RentalPipelineDbContext))]
-    partial class RentalPipelineDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260802195416_MakeProposalStatusHistoryPreviousStatusNullable")]
+    partial class MakeProposalStatusHistoryPreviousStatusNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

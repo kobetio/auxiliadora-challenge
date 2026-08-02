@@ -4,6 +4,8 @@ using RentalPipeline.Application.Interfaces;
 using RentalPipeline.Application.Services;
 using RentalPipeline.Application.Validators;
 using RentalPipeline.Domain.Interfaces;
+using RentalPipeline.Domain.StateMachine;
+using RentalPipeline.Infrastructure.EventPublishing;
 using RentalPipeline.Infrastructure.Persistence;
 using RentalPipeline.Infrastructure.Repositories;
 
@@ -33,10 +35,15 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers Application-layer services and FluentValidation validators.
+    /// Registers Application-layer services, the <see cref="ProposalStateMachine"/> domain service,
+    /// the <see cref="IEventPublisher"/> abstraction (currently backed by <see cref="FakeEventPublisher"/>,
+    /// swappable for a RabbitMQ implementation later), and FluentValidation validators.
     /// </summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        services.AddSingleton<ProposalStateMachine>();
+        services.AddSingleton<IEventPublisher, FakeEventPublisher>();
+
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IRentalProposalService, RentalProposalService>();

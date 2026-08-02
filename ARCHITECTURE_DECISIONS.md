@@ -255,6 +255,33 @@ Consistency was intentionally prioritized over performance.
 
 ---
 
+# Concurrency Implementation Details (Phase 6)
+
+The strategy above is implemented as two independent, complementary layers — either one alone would close the race in practice, but Architecture.md explicitly asks for both, and each protects against a slightly different anomaly:
+
+**Layer 1 — Serializable transaction around the critical section.** `IUnitOfWork.ExecuteInSerializableTransactionAsync<TResult>` wraps a delegate in a `Database.BeginTransactionAsync(IsolationLevel.Serializable)` transaction (committed only if the delegate completes without throwing; any exception rolls it back via disposal). `RentalProposalService.CreateAsync` wraps exactly the read-check-reserve-create sequence from Architecture.md's "Transaction Flow" diagram (reading the Property, checking Rule 2, reserving it, and creating the Proposal) in this transaction — not the whole request, since the Customer existence check plays no part in the race. Under PostgreSQL's Serializable Snapshot Isolation, if two transactions' reads genuinely overlap before either commits, PostgreSQL detects the anomaly at commit time and aborts one side with a `40001 serialization_failure`.
+
+**Layer 2 — Optimistic concurrency (`xmin`/`RowVersion`, added in Phase 4).** Even without any overlap in the transactions' read phases, both `Property` and `RentalProposal` carry a `RowVersion` mapped to PostgreSQL's `xmin`. Every `UPDATE` EF Core generates includes `WHERE Id = @id AND xmin = @originalXmin`; if another transaction already committed a change to that row, the second `UPDATE` affects zero rows and EF Core throws `DbUpdateConcurrencyException`.
+
+**Both exceptions are mapped to `409 Conflict` in one place**: `ExceptionHandlingMiddleware` specifically catches `DbUpdateConcurrencyException` and `DbUpdateException` wrapping a `PostgresException` with `SqlState == PostgresErrorCodes.SerializationFailure`, logs each as a `Warning` (not `Error` — these are expected, retryable outcomes of a legitimate race, not bugs), and returns `409` for both. Everything else remains an unexpected `500`.
+
+In practice, for `POST /proposals` this means: if the second request's read happens *after* the first already committed, Rule 2's explicit `property.Status != Available` check already returns a `409 ConflictError` — no exception involved. Only in the narrow window where both requests' reads genuinely overlap does either the Serializable-isolation abort or the `xmin` mismatch kick in. Externally, all three paths are indistinguishable: exactly one request ever succeeds, and the loser always receives `409`. The `ConcurrencyTests` integration test class fires two truly parallel requests (via `Task.WhenAll` and two separate `HttpClient`s hitting the same real PostgreSQL container) to verify this end to end, for both `POST /proposals` (two proposals racing for one Property) and `PATCH /proposals/{id}/status` (two updates racing for one Proposal).
+
+---
+
+# Integration Testing with Testcontainers
+
+Architecture.md calls for Integration Tests focused on "REST Endpoints, Database, Transactions, Concurrency, History, Event Simulation" — none of which can be meaningfully verified against mocked repositories the way the Unit Tests do. `RentalPipeline.IntegrationTests` boots the real API in-memory via `WebApplicationFactory<Program>`, backed by a real, ephemeral PostgreSQL instance started with **Testcontainers** rather than a hand-maintained "dedicated test DB" — this avoids any shared, stateful test database that could drift or be left dirty between runs, requires no manual setup beyond having Docker available, and runs identically on every machine and in CI.
+
+Key design points:
+
+- **One container per test run, not per test class.** `RentalPipelineApiFactory` (`IAsyncLifetime`) starts a single `postgres:16` container and applies EF Core migrations once in `InitializeAsync`. All test classes share it via a single `[CollectionDefinition]`/`ICollectionFixture`, since starting a fresh container per class would be prohibitively slow. Because xUnit never parallelizes tests within one collection, sharing the database is safe as long as every test creates its own randomly-named Property/Customer/Proposal (see `TestDataFactory`) instead of assuming a pristine database — the one deliberate exception being `ConcurrencyTests`, which intentionally fires genuinely parallel requests against data it just created.
+- **Event simulation is asserted, not inferred from logs.** `FakeEventPublisher` (the real `IEventPublisher` implementation) only logs, which integration tests can't easily assert on. `RentalPipelineApiFactory` swaps it for a `RecordingEventPublisher` test double via `ConfigureTestServices`, so tests can assert a `ContractActivatedEvent` was actually published for a specific proposal/property pair when a proposal reaches `Active`.
+- **Enum JSON shape must match the real API.** The API serializes enums as strings via a `JsonStringEnumConverter` registered only in the MVC pipeline's `AddJsonOptions` — this does not apply to a plain `HttpClient`'s own `PostAsJsonAsync`/`ReadFromJsonAsync` calls. `TestJsonOptions.Default` mirrors that configuration so test code speaks the exact same JSON shape as the real API.
+- **Setup goes through HTTP, never through the `DbContext` directly.** `TestDataFactory` creates Properties/Customers/Proposals by calling the real endpoints, so every test — including its own setup — exercises the full request pipeline (validation, mapping, persistence) rather than seeding data through a backdoor.
+
+---
+
 # Why Not Redis?
 
 Redis Distributed Lock was intentionally not implemented.

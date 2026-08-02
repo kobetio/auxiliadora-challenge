@@ -55,3 +55,9 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+/// <summary>
+/// Exposes the top-level-statement-generated <c>Program</c> class so integration tests can boot the
+/// API in-memory via <c>WebApplicationFactory&lt;Program&gt;</c>.
+/// </summary>
+public partial class Program;

@@ -1,11 +1,16 @@
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+
 namespace RentalPipeline.Api.Middlewares;
 
 /// <summary>
 /// Centralized exception handler (Architecture.md's "Error Handling" section): logs every
-/// unhandled exception at Error level and converts it into an RFC 7807 <c>ProblemDetails</c>
-/// <c>500</c> response, so controllers never need their own try/catch blocks. Any exception that
-/// reaches here is by definition unexpected — expected business failures are always represented as
-/// <c>Result&lt;T&gt;</c> failures and never throw.
+/// unhandled exception and converts it into an RFC 7807 <c>ProblemDetails</c> response, so
+/// controllers never need their own try/catch blocks. Two concurrency-related EF Core/PostgreSQL
+/// exceptions are specifically mapped to <c>409 Conflict</c> (Architecture.md "Optimistic
+/// Concurrency": "the API should translate [DbUpdateConcurrencyException] into 409 Conflict") since
+/// they represent an expected, retryable race outcome rather than a genuine server error. Anything
+/// else is truly unexpected and mapped to <c>500</c>.
 /// </summary>
 public class ExceptionHandlingMiddleware
 {
@@ -19,12 +24,45 @@ public class ExceptionHandlingMiddleware
         _logger = logger;
     }
 
-    /// <summary>Invokes the rest of the pipeline, converting any unhandled exception into a ProblemDetails 500.</summary>
+    /// <summary>Invokes the rest of the pipeline, converting any unhandled exception into a ProblemDetails response.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         try
         {
             await _next(context);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            // The RowVersion/xmin optimistic concurrency token didn't match on UPDATE: another
+            // request modified (or deleted) the same row first.
+            _logger.LogWarning(
+                exception,
+                "Concurrency conflict (stale RowVersion) while processing {Method} {Path}.",
+                context.Request.Method,
+                context.Request.Path);
+
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Conflict",
+                "The resource was modified by another request. Please retry.");
+        }
+        catch (DbUpdateException exception) when (IsSerializationFailure(exception))
+        {
+            // PostgreSQL's Serializable isolation level (Architecture.md Section 9) detected that
+            // this transaction cannot be reconciled with another one that committed concurrently
+            // (e.g. two requests racing to reserve the same Property) and aborted it.
+            _logger.LogWarning(
+                exception,
+                "Serialization failure (concurrent transaction conflict) while processing {Method} {Path}.",
+                context.Request.Method,
+                context.Request.Path);
+
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Conflict",
+                "The request conflicted with another concurrent operation. Please retry.");
         }
         catch (Exception exception)
         {
@@ -34,18 +72,30 @@ public class ExceptionHandlingMiddleware
                 context.Request.Method,
                 context.Request.Path);
 
-            var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
-            {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "Internal Server Error",
-                Detail = "An unexpected error occurred while processing the request.",
-                Instance = context.Request.Path,
-            };
-
-            context.Response.ContentType = "application/problem+json";
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            await context.Response.WriteAsJsonAsync(problemDetails);
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status500InternalServerError,
+                "Internal Server Error",
+                "An unexpected error occurred while processing the request.");
         }
+    }
+
+    private static bool IsSerializationFailure(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure };
+
+    private static async Task WriteProblemAsync(HttpContext context, int statusCode, string title, string detail)
+    {
+        var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Status = statusCode,
+            Title = title,
+            Detail = detail,
+            Instance = context.Request.Path,
+        };
+
+        context.Response.ContentType = "application/problem+json";
+        context.Response.StatusCode = statusCode;
+        await context.Response.WriteAsJsonAsync(problemDetails);
     }
 }
 

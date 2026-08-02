@@ -42,49 +42,58 @@ public class RentalProposalService : IRentalProposalService
 
     public async Task<Result<RentalProposalDto>> CreateAsync(CreateProposalRequest request, CancellationToken cancellationToken = default)
     {
-        var property = await _propertyRepository.GetByIdAsync(request.PropertyId, cancellationToken);
-        if (property is null)
-        {
-            return Result.Fail<RentalProposalDto>(new NotFoundError($"Property '{request.PropertyId}' was not found."));
-        }
-
+        // The customer check is a simple existence read that plays no part in the property
+        // reservation race, so it doesn't need to run inside the Serializable transaction below.
         var customer = await _customerRepository.GetByIdAsync(request.CustomerId, cancellationToken);
         if (customer is null)
         {
             return Result.Fail<RentalProposalDto>(new NotFoundError($"Customer '{request.CustomerId}' was not found."));
         }
 
-        // Rule 2: a proposal can only be created against an Available property.
-        if (property.Status != PropertyStatus.Available)
+        // Rule 2/3 critical section (Architecture.md Section 9 "Transaction Flow"): reading the
+        // Property's availability and reserving it must happen inside a single Serializable
+        // transaction, so PostgreSQL detects and aborts one side of two concurrent requests racing
+        // to reserve the same Property, instead of both succeeding (write-skew anomaly). A
+        // serialization failure surfaces as a Postgres exception, mapped to 409 by
+        // ExceptionHandlingMiddleware.
+        return await _unitOfWork.ExecuteInSerializableTransactionAsync(async ct =>
         {
-            _logger.LogWarning(
-                "Property unavailable: property {PropertyId} has status {PropertyStatus}, rejecting new proposal.",
-                property.Id,
-                property.Status);
+            var property = await _propertyRepository.GetByIdAsync(request.PropertyId, ct);
+            if (property is null)
+            {
+                return Result.Fail<RentalProposalDto>(new NotFoundError($"Property '{request.PropertyId}' was not found."));
+            }
 
-            return Result.Fail<RentalProposalDto>(new ConflictError(
-                $"Property '{property.Id}' is not available for a new proposal (current status: '{property.Status}')."));
-        }
+            // Rule 2: a proposal can only be created against an Available property.
+            if (property.Status != PropertyStatus.Available)
+            {
+                _logger.LogWarning(
+                    "Property unavailable: property {PropertyId} has status {PropertyStatus}, rejecting new proposal.",
+                    property.Id,
+                    property.Status);
 
-        // Rule 3: creating the proposal reserves the property (Available -> InNegotiation) and the
-        // proposal itself starts as New. Both changes are persisted by the same SaveChangesAsync
-        // call below, so EF Core commits them atomically in a single implicit transaction.
-        // NOTE: wrapping this critical section in an explicit Serializable-isolation transaction to
-        // fully close the concurrent-creation race (Architecture.md Section 9) is Phase 6 work.
-        property.MarkAsInNegotiation();
+                return Result.Fail<RentalProposalDto>(new ConflictError(
+                    $"Property '{property.Id}' is not available for a new proposal (current status: '{property.Status}')."));
+            }
 
-        var proposal = new RentalProposal(property.Id, customer.Id);
+            // Rule 3: creating the proposal reserves the property (Available -> InNegotiation) and
+            // the proposal itself starts as New. Both changes are persisted by the same
+            // SaveChangesAsync call below and committed together as part of the transaction.
+            property.MarkAsInNegotiation();
 
-        await _rentalProposalRepository.AddAsync(proposal, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var proposal = new RentalProposal(property.Id, customer.Id);
 
-        _logger.LogInformation(
-            "Proposal created: {ProposalId} for property {PropertyId} and customer {CustomerId}.",
-            proposal.Id,
-            proposal.PropertyId,
-            proposal.CustomerId);
+            await _rentalProposalRepository.AddAsync(proposal, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Ok(proposal.ToDto());
+            _logger.LogInformation(
+                "Proposal created: {ProposalId} for property {PropertyId} and customer {CustomerId}.",
+                proposal.Id,
+                proposal.PropertyId,
+                proposal.CustomerId);
+
+            return Result.Ok(proposal.ToDto());
+        }, cancellationToken);
     }
 
     public async Task<Result<RentalProposalDto>> UpdateStatusAsync(Guid id, UpdateProposalStatusRequest request, CancellationToken cancellationToken = default)

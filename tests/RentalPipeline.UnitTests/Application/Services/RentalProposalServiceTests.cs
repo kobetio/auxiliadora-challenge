@@ -1,3 +1,4 @@
+using FluentResults;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using RentalPipeline.Application.Contracts;
@@ -32,6 +33,13 @@ public class RentalProposalServiceTests
             _stateMachine,
             _eventPublisher,
             NullLogger<RentalProposalService>.Instance);
+
+        // The real Serializable transaction is Infrastructure/EF Core behavior (no DB in these unit
+        // tests), so the mock just needs to invoke the delegate it's given, exactly like a
+        // successful (committed) transaction would.
+        _unitOfWork
+            .ExecuteInSerializableTransactionAsync(Arg.Any<Func<CancellationToken, Task<Result<RentalProposalDto>>>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => callInfo.Arg<Func<CancellationToken, Task<Result<RentalProposalDto>>>>()!(callInfo.Arg<CancellationToken>()));
     }
 
     private static Property AvailableProperty() => new("Loft Centro", "Rua A, 123");

@@ -46,7 +46,11 @@ public class RentalPipelineApiFactory : WebApplicationFactory<Program>, IAsyncLi
         await _dbContainer.StartAsync();
 
         // Accessing Services builds the host lazily, running ConfigureWebHost above — by this point
-        // the container is already started, so its real connection string is available.
+        // the container is already started, so its real connection string is available. Program.cs
+        // itself now also applies migrations automatically on startup, so this call is technically
+        // redundant (MigrateAsync is idempotent) but kept explicit: it forces the host to build (and
+        // the schema to exist) here in InitializeAsync, deterministically, rather than lazily on
+        // whichever test happens to send the first request.
         using var scope = Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<RentalPipelineDbContext>();
         await dbContext.Database.MigrateAsync();

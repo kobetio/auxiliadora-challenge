@@ -345,6 +345,25 @@ Two small but important polish decisions, both surfaced during manual testing on
 
 ---
 
+# Database Migrations Applied Automatically on Startup
+
+`docker compose up` (and any other deployment of the API) must bring up a fully working, migrated database with zero manual steps — no `dotnet-ef` tool, no separate `dotnet ef database update` command required on the host or in the container.
+
+`Program.cs` calls `dbContext.Database.MigrateAsync()` once at startup, right after the host is built and before the HTTP pipeline is configured, so the API never starts accepting requests against a schema that isn't up to date. This runs identically whether the API is started via `dotnet run` on the host or via the Docker image, and it is exactly what `RentalPipelineApiFactory` (the integration test host) already did independently since Phase 6 — the two are now consistent.
+
+Trade-off acknowledged: for a higher-scale, multi-instance deployment, applying migrations from the application's own startup path is generally discouraged (multiple instances could race to apply the same migration, and a bad migration would block every instance from starting rather than being validated as a separate, controlled release step). For this project's single-instance deployment model, the simplicity and zero-manual-setup benefit outweighs that risk; a dedicated migration step (a one-off `dotnet ef database update` job/container, run before the API instances start) is the documented alternative for a production-grade, multi-instance evolution of this project.
+
+---
+
+# Docker Image Polish
+
+Two small issues surfaced while validating `docker compose up` end to end from a clean state, both fixed in the Dockerfile/`Program.cs` rather than left as log noise:
+
+- **Missing `libgssapi-krb5-2`**: the `mcr.microsoft.com/dotnet/aspnet:10.0` runtime image doesn't include this system library. Npgsql opportunistically probes for GSSAPI (Kerberos) support at connection time regardless of whether it's actually used, and without the library this printed `Cannot load library libgssapi_krb5.so.2` / `Error: ... cannot open shared object file` to stdout on every container start — harmless (the project only ever uses password authentication) but alarming-looking in logs. Fixed by installing `libgssapi-krb5-2` via `apt-get` in the final image stage.
+- **`UseHttpsRedirection` inside the container**: the Docker image only exposes plain HTTP on port 8080 (see `docker-compose.yml`/`Dockerfile`) with no HTTPS binding at all, so `app.UseHttpsRedirection()` could never find an HTTPS port to redirect to, logging a `Failed to determine the https port for redirect` warning on *every single request*. `DOTNET_RUNNING_IN_CONTAINER` is set automatically to `true` by Microsoft's official .NET container base images, so `Program.cs` now skips `UseHttpsRedirection()` when that variable is set, while keeping it for local `dotnet run` (where Kestrel's HTTPS dev-certificate profile is available and redirection is meaningful).
+
+---
+
 # Future Improvements
 
 The current architecture was designed to support future evolution with minimal changes.

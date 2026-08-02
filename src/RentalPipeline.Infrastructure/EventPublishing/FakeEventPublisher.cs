@@ -19,10 +19,16 @@ public class FakeEventPublisher : IEventPublisher
 
     public Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default) where TEvent : notnull
     {
-        _logger.LogInformation(
-            "Publishing Event {EventType} {@Event}",
-            typeof(TEvent).Name,
-            @event);
+        // Strips a trailing "Event" suffix (e.g. "ContractActivatedEvent" -> "ContractActivated") so the
+        // logged name matches Architecture.md's own example verbatim ("Publishing Event / ContractActivated
+        // / ProposalId / PropertyId / OccurredAt"). "{@Event}" structurally logs every one of the record's
+        // properties, so this line works unchanged for any future event type, not just ContractActivated.
+        var typeName = typeof(TEvent).Name;
+        var eventName = typeName.EndsWith("Event", StringComparison.Ordinal)
+            ? typeName[..^"Event".Length]
+            : typeName;
+
+        _logger.LogInformation("Publishing Event {EventName} {@Event}", eventName, @event);
 
         return Task.CompletedTask;
     }

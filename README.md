@@ -8,17 +8,17 @@ This project was developed as a technical challenge with the objective of demons
 
 # Features
 
-- Property Management
-- Customer Management
+- Property Management (full CRUD)
+- Customer Management (full CRUD)
 - Rental Proposal Management
 - Proposal State Machine
 - Proposal Status History
 - Event Publishing Simulation
-- Concurrency Protection
-- Swagger Documentation
-- Docker Support
+- Concurrency Protection (Serializable transactions + Optimistic Concurrency)
+- Swagger / OpenAPI Documentation
+- Docker Support (auto-applies database migrations on startup)
 - Unit Tests
-- Integration Tests
+- Integration Tests (real PostgreSQL via Testcontainers)
 
 ---
 
@@ -33,6 +33,7 @@ This project was developed as a technical challenge with the objective of demons
 - Swagger / OpenAPI
 - xUnit
 - NSubstitute
+- Testcontainers
 - Docker
 
 ---
@@ -57,9 +58,8 @@ tests/
 
 Before running the project, make sure the following tools are installed:
 
-- .NET 10 SDK
-- Docker
-- Docker Compose
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) (only needed to run the API directly on the host, or to run the tests)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Docker Engine + Docker Compose)
 
 ---
 
@@ -68,34 +68,68 @@ Before running the project, make sure the following tools are installed:
 ## Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/kobetio/auxiliadora-challenge.git
 
-cd RentalPipeline
+cd auxiliadora-challenge
 ```
 
-## Start PostgreSQL
+## Option A — Fully Dockerized (recommended)
+
+Builds the API image and starts both the API and PostgreSQL containers. Database migrations are applied automatically on startup — no extra steps needed.
 
 ```bash
-docker compose up -d
+docker compose up --build
 ```
 
-## Apply database migrations
+Once both containers are healthy, the API is available at:
+
+```
+http://localhost:8080
+```
+
+Swagger UI:
+
+```
+http://localhost:8080/swagger
+```
+
+To stop the containers:
 
 ```bash
-dotnet ef database update
+docker compose down
 ```
 
-## Run the application
+## Option B — API on the host, PostgreSQL in Docker
+
+Start only PostgreSQL (exposed on the host at port `5433`):
+
+```bash
+docker compose up -d postgres
+```
+
+Run the API directly with the .NET SDK. `appsettings.json` is already configured to connect to `localhost:5433`, and migrations are applied automatically on startup, just like in Option A:
 
 ```bash
 dotnet run --project src/RentalPipeline.Api
+```
+
+The API is available at:
+
+```
+http://localhost:5023
+```
+
+Swagger UI:
+
+```
+http://localhost:5023/swagger
 ```
 
 ---
 
 # Running the Tests
 
-Run all tests:
+Run all tests (unit + integration):
 
 ```bash
 dotnet test
@@ -103,18 +137,14 @@ dotnet test
 
 The project contains:
 
-- Unit Tests
-- Integration Tests
+- **Unit Tests** (`RentalPipeline.UnitTests`) — Domain and Application layers, using mocked dependencies. No external services required.
+- **Integration Tests** (`RentalPipeline.IntegrationTests`) — full HTTP request pipeline against a real, ephemeral PostgreSQL instance started automatically with **Testcontainers**. **Docker must be running** for these to execute.
 
 ---
 
 # API Documentation
 
-After running the application, Swagger will be available at:
-
-```
-https://localhost:<port>/swagger
-```
+After running the application (see above), Swagger is available at `/swagger` on whichever port you started the API on.
 
 ---
 
@@ -130,7 +160,7 @@ The most important business rules are:
 - When a proposal becomes **Active**, the property becomes **Rented**.
 - Properties with status **Rented** are permanently removed from the rental market and are not returned by **GET /properties**.
 - Rejected or Cancelled proposals return the property to **Available**.
-- Every proposal transition generates a history record.
+- Every proposal transition — including its initial creation — generates a history record.
 - Activating a proposal simulates publishing an integration event.
 
 ---

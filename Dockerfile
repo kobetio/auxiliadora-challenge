@@ -2,6 +2,13 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 EXPOSE 8080
 
+# Npgsql opportunistically probes for GSSAPI (Kerberos) support at startup even though this project
+# only uses password authentication; without this library it prints a harmless-but-alarming-looking
+# "Cannot load library libgssapi_krb5.so.2" error to stdout on every start.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src

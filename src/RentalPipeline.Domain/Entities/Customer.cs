@@ -28,4 +28,20 @@ public class Customer
         Phone = phone;
         CreatedAt = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Updates the customer's editable details. Not part of the original challenge
+    /// specification (which only documents Create/Get for customers) — added on explicit
+    /// request to provide full CRUD.
+    /// </summary>
+    public void UpdateDetails(string name, string email, string phone)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(phone);
+
+        Name = name;
+        Email = email;
+        Phone = phone;
+    }
 }

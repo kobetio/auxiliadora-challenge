@@ -40,6 +40,22 @@ public class Property
     }
 
     /// <summary>
+    /// Updates the property's editable details. Not part of the original challenge
+    /// specification (which only documents Create/Get for properties) — added on explicit
+    /// request to provide full CRUD. Allowed regardless of <see cref="Status"/>, since this is
+    /// a plain data correction, not a state transition governed by a business rule.
+    /// </summary>
+    public void UpdateDetails(string name, string address, string? description)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+
+        Name = name;
+        Address = address;
+        Description = description;
+    }
+
+    /// <summary>
     /// Reserves the property for an in-progress rental proposal (Rule 3).
     /// </summary>
     public void MarkAsInNegotiation()

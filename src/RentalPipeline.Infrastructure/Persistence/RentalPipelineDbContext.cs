@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using RentalPipeline.Application.Interfaces;
 using RentalPipeline.Domain.Entities;
 
 namespace RentalPipeline.Infrastructure.Persistence;
 
-public class RentalPipelineDbContext : DbContext
+public class RentalPipelineDbContext : DbContext, IUnitOfWork
 {
     public RentalPipelineDbContext(DbContextOptions<RentalPipelineDbContext> options) : base(options)
     {

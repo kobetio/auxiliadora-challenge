@@ -128,6 +128,32 @@ public class ProposalsEndpointsTests
     }
 
     [Fact]
+    public async Task UpdateStatus_ToActive_RemovesPropertyFromListingButKeepsItReachableById()
+    {
+        // Rule 6: "It should no longer appear in GET /properties" — a Rented property is permanently
+        // removed from the rental market listing, but GET /properties/{id} must still return it (it's
+        // not deleted, just no longer offered).
+        var property = await TestDataFactory.CreatePropertyAsync(_client);
+        var customer = await TestDataFactory.CreateCustomerAsync(_client);
+        var proposal = await TestDataFactory.CreateProposalAsync(_client, property.Id, customer.Id);
+
+        await ChangeStatusAsync(proposal.Id, ProposalStatus.CreditAnalysis);
+        await ChangeStatusAsync(proposal.Id, ProposalStatus.ContractIssued);
+        await ChangeStatusAsync(proposal.Id, ProposalStatus.Signed);
+        await ChangeStatusAsync(proposal.Id, ProposalStatus.Active);
+
+        var listResponse = await _client.GetAsync("/properties");
+        listResponse.EnsureSuccessStatusCode();
+        var listing = await listResponse.Content.ReadFromJsonAsync<List<PropertyDto>>(TestJsonOptions.Default);
+        Assert.DoesNotContain(listing!, p => p.Id == property.Id);
+
+        var byIdResponse = await _client.GetAsync($"/properties/{property.Id}");
+        byIdResponse.EnsureSuccessStatusCode();
+        var fetched = await byIdResponse.Content.ReadFromJsonAsync<PropertyDto>(TestJsonOptions.Default);
+        Assert.Equal(PropertyStatus.Rented, fetched!.Status);
+    }
+
+    [Fact]
     public async Task GetHistory_UnknownProposal_ReturnsNotFound()
     {
         var response = await _client.GetAsync($"/proposals/{Guid.NewGuid()}/history");

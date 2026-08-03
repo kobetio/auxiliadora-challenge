@@ -22,8 +22,8 @@ public class ProposalsController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a rental proposal. Validates the property (Rule 2: must be <c>Available</c>) and the
-    /// customer, reserves the property (Rule 3: <c>Available</c> → <c>InNegotiation</c>), and
+    /// Creates a rental proposal. Validates that the property is <c>Available</c> and that the
+    /// customer exists, reserves the property (<c>Available</c> → <c>InNegotiation</c>), and
     /// creates the proposal starting as <c>New</c>.
     /// </summary>
     /// <response code="201">The proposal was created.</response>
@@ -42,8 +42,8 @@ public class ProposalsController : ControllerBase
     }
 
     /// <summary>
-    /// Applies a status transition. Validates the transition (Rule 4/5), cascades the resulting
-    /// property status change (Rule 6/7), records history (Rule 8), and publishes a
+    /// Applies a status transition. Validates the transition against the state machine, cascades
+    /// the resulting property status change, records history, and publishes a
     /// <c>ContractActivated</c> event when the new status is <c>Active</c>.
     /// </summary>
     /// <response code="200">The updated proposal.</response>

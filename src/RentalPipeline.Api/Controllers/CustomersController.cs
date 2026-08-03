@@ -55,10 +55,7 @@ public class CustomersController : ControllerBase
         return this.ToOkResult(result);
     }
 
-    /// <summary>
-    /// Updates a customer's editable details. Not part of the original challenge specification —
-    /// added on explicit request to provide full CRUD.
-    /// </summary>
+    /// <summary>Updates a customer's editable details.</summary>
     /// <response code="200">The updated customer.</response>
     /// <response code="400">The request failed validation.</response>
     /// <response code="404">No customer exists with the given id.</response>
@@ -73,9 +70,8 @@ public class CustomersController : ControllerBase
     }
 
     /// <summary>
-    /// Deletes a customer. Not part of the original challenge specification — added on explicit
-    /// request to provide full CRUD. Fails with <c>409 Conflict</c> if the customer has associated
-    /// rental proposals.
+    /// Deletes a customer. Fails with <c>409 Conflict</c> if the customer has associated rental
+    /// proposals.
     /// </summary>
     /// <response code="204">The customer was deleted.</response>
     /// <response code="404">No customer exists with the given id.</response>

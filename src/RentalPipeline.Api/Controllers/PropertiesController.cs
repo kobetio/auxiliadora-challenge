@@ -21,7 +21,7 @@ public class PropertiesController : ControllerBase
         _propertyService = propertyService;
     }
 
-    /// <summary>Creates a new property. Its status always starts as <c>Available</c> (Rule 1).</summary>
+    /// <summary>Creates a new property. Its status always starts as <c>Available</c>.</summary>
     /// <response code="201">The property was created.</response>
     /// <response code="400">The request failed validation.</response>
     [HttpPost]
@@ -58,10 +58,7 @@ public class PropertiesController : ControllerBase
         return this.ToOkResult(result);
     }
 
-    /// <summary>
-    /// Updates a property's editable details. Not part of the original challenge specification —
-    /// added on explicit request to provide full CRUD.
-    /// </summary>
+    /// <summary>Updates a property's editable details.</summary>
     /// <response code="200">The updated property.</response>
     /// <response code="400">The request failed validation.</response>
     /// <response code="404">No property exists with the given id.</response>
@@ -76,9 +73,8 @@ public class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// Deletes a property. Not part of the original challenge specification — added on explicit
-    /// request to provide full CRUD. Fails with <c>409 Conflict</c> if the property has associated
-    /// rental proposals.
+    /// Deletes a property. Fails with <c>409 Conflict</c> if the property has associated rental
+    /// proposals.
     /// </summary>
     /// <response code="204">The property was deleted.</response>
     /// <response code="404">No property exists with the given id.</response>

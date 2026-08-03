@@ -185,6 +185,7 @@ Additional information about the architectural decisions can be found in:
 
 Some features were intentionally left outside the scope of this challenge and are documented in:
 
+- Financial details on proposals (rent amount, deposits, fees, payment terms)
 - RabbitMQ Integration
 - JWT Authentication
 - Authorization

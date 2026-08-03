@@ -73,6 +73,14 @@ Delete operations include a safe-delete guard: a Property or Customer with at le
 
 ---
 
+# Scope Priority: Proposal Flow and Entity States Over Financial Details
+
+The challenge's core requirement is a correct rental proposal pipeline — status transitions, property reservation/release, concurrency safety, history, and event simulation.
+
+Financial aspects of a proposal (rent amount, deposits, fees, payment terms, etc.) were intentionally left out of scope. The priority was the flow itself and the correct functioning of proposal and property state changes, not a complete commercial model of a rental contract.
+
+---
+
 # Why PostgreSQL?
 
 PostgreSQL was selected because it offers:
@@ -376,6 +384,7 @@ The current architecture was designed to support future evolution with minimal c
 
 Possible future enhancements include:
 
+- Financial details on proposals (rent amount, deposits, fees, payment terms, and related validations)
 - RabbitMQ
 - Outbox Pattern
 - JWT Authentication

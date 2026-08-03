@@ -185,6 +185,7 @@ Informações adicionais sobre as decisões arquiteturais podem ser encontradas 
 
 Algumas funcionalidades foram intencionalmente deixadas fora do escopo deste desafio e estão documentadas em:
 
+- Detalhes financeiros nas propostas (valor do aluguel, depósitos, taxas, condições de pagamento)
 - Integração com RabbitMQ
 - Autenticação JWT
 - Autorização

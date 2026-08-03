@@ -73,6 +73,14 @@ As operações de exclusão incluem uma proteção de exclusão segura: um Prope
 
 ---
 
+# Prioridade de Escopo: Fluxo das Propostas e Estados das Entidades em vez de Detalhes Financeiros
+
+O requisito central do desafio é um pipeline correto de propostas de locação — transições de status, reserva/liberação do imóvel, segurança de concorrência, histórico e simulação de eventos.
+
+Aspectos financeiros de uma proposta (valor do aluguel, depósitos, taxas, condições de pagamento, etc.) foram intencionalmente deixados fora do escopo. A prioridade foi o fluxo em si e o funcionamento correto das mudanças de estado das propostas e dos imóveis, e não um modelo comercial completo de um contrato de locação.
+
+---
+
 # Por que PostgreSQL?
 
 O PostgreSQL foi selecionado porque oferece:
@@ -376,6 +384,7 @@ A arquitetura atual foi projetada para suportar evolução futura com alteraçõ
 
 Possíveis melhorias futuras incluem:
 
+- Detalhes financeiros nas propostas (valor do aluguel, depósitos, taxas, condições de pagamento e validações relacionadas)
 - RabbitMQ
 - Outbox Pattern
 - Autenticação JWT
